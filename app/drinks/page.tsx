@@ -1,4 +1,5 @@
 import { DrinkTable } from "@/components/DrinkTable";
+import { T } from "@/components/LanguageProvider";
 import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +13,12 @@ export default async function DrinksPage() {
     <main className="page">
       <section className="page-header">
         <div>
-          <h1>Drinks</h1>
-          <p>Add, update, and remove drinks for the store catalog.</p>
+          <h1>
+            <T id="drinksTitle" />
+          </h1>
+          <p>
+            <T id="drinksDescription" />
+          </p>
         </div>
       </section>
       <DrinkTable

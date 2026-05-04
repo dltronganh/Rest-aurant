@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { Money } from "@/components/Money";
+import { T } from "@/components/LanguageProvider";
 import { prisma } from "@/lib/db";
-import { formatMoney } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -24,40 +25,55 @@ export default async function HomePage() {
     <main className="page">
       <section className="page-header">
         <div>
-          <h1>Store Manager</h1>
-          <p>Manage drink details and record orders from one local dashboard.</p>
+          <h1>
+            <T id="storeManager" />
+          </h1>
+          <p>
+            <T id="storeManagerDescription" />
+          </p>
         </div>
         <div className="actions">
           <Link className="button" href="/drinks">
-            Manage Drinks
+            <T id="manageDrinks" />
           </Link>
           <Link className="button secondary" href="/orders">
-            New Order
+            <T id="newOrder" />
           </Link>
         </div>
       </section>
 
       <section className="grid">
         <div className="panel">
-          <h2>Today&apos;s workspace</h2>
+          <h2>
+            <T id="todayWorkspace" />
+          </h2>
           <p className="muted">
-            Add drink items first, then use Orders to create unpaid orders and
-            mark payment when complete.
+            <T id="todayWorkspaceDescription" />
           </p>
         </div>
         <div className="panel">
-          <h2>Quick Stats</h2>
+          <h2>
+            <T id="quickStats" />
+          </h2>
           <div className="item-row">
-            <span>Drinks in catalog</span>
+            <span>
+              <T id="drinksInCatalog" />
+            </span>
             <strong>{drinkCount}</strong>
           </div>
           <div className="item-row">
-            <span>Unpaid orders</span>
+            <span>
+              <T id="unpaidOrders" />
+            </span>
             <strong>{unpaidCount}</strong>
           </div>
           <div className="item-row">
-            <span>Recent order value</span>
-            <strong>{formatMoney(recentTotal)}</strong>
+            <span>
+              <T id="recentOrderValue" />
+            </span>
+            <strong>
+              <Money value={recentTotal} />
+            </strong>
           </div>
         </div>
       </section>

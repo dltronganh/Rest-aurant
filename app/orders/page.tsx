@@ -1,3 +1,4 @@
+import { T } from "@/components/LanguageProvider";
 import { OrderForm } from "@/components/OrderForm";
 import { OrderList } from "@/components/OrderList";
 import { prisma } from "@/lib/db";
@@ -23,14 +24,20 @@ export default async function OrdersPage() {
     <main className="page">
       <section className="page-header">
         <div>
-          <h1>Orders</h1>
-          <p>Create unpaid orders and mark payment when it is complete.</p>
+          <h1>
+            <T id="ordersTitle" />
+          </h1>
+          <p>
+            <T id="ordersDescription" />
+          </p>
         </div>
       </section>
 
       <section className="grid">
         <div className="panel">
-          <h2>New Order</h2>
+          <h2>
+            <T id="newOrder" />
+          </h2>
           <OrderForm
             drinks={drinks.map((drink) => ({
               ...drink,
@@ -39,7 +46,9 @@ export default async function OrdersPage() {
           />
         </div>
         <div className="panel">
-          <h2>Order History</h2>
+          <h2>
+            <T id="orderHistory" />
+          </h2>
           <OrderList
             orders={orders.map((order) => ({
               ...order,

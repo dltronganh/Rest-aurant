@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { DrinkView } from "@/components/DrinkForm";
+import { T, useLanguage } from "@/components/LanguageProvider";
 import { formatMoney } from "@/lib/format";
 
 type OrderFormProps = {
@@ -11,6 +12,7 @@ type OrderFormProps = {
 
 export function OrderForm({ drinks }: OrderFormProps) {
   const router = useRouter();
+  const { language, text } = useLanguage();
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -47,14 +49,14 @@ export function OrderForm({ drinks }: OrderFormProps) {
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to create order.");
+        throw new Error(payload.error ?? text("unableCreateOrder"));
       }
 
       setQuantities({});
       startTransition(() => router.refresh());
     } catch (createError) {
       setError(
-        createError instanceof Error ? createError.message : "Unable to create order.",
+        createError instanceof Error ? createError.message : text("unableCreateOrder"),
       );
     }
   }
@@ -62,16 +64,20 @@ export function OrderForm({ drinks }: OrderFormProps) {
   return (
     <form className="form" onSubmit={handleSubmit}>
       {drinks.length === 0 ? (
-        <p className="muted">Add drinks before creating an order.</p>
+        <p className="muted">
+          <T id="addDrinksBeforeOrder" />
+        </p>
       ) : (
         drinks.map((drink) => (
           <div className="item-row" key={drink.id}>
             <div>
               <strong>{drink.name}</strong>
-              <div className="muted">{formatMoney(drink.price)}</div>
+              <div className="muted">{formatMoney(drink.price, language)}</div>
             </div>
             <div className="field">
-              <label htmlFor={`quantity-${drink.id}`}>Qty</label>
+              <label htmlFor={`quantity-${drink.id}`}>
+                <T id="quantity" />
+              </label>
               <input
                 id={`quantity-${drink.id}`}
                 min="0"
@@ -90,10 +96,12 @@ export function OrderForm({ drinks }: OrderFormProps) {
         ))
       )}
 
-      <div className="total">Total: {formatMoney(total)}</div>
+      <div className="total">
+        <T id="total" />: {formatMoney(total, language)}
+      </div>
       {error ? <div className="notice">{error}</div> : null}
       <button className="button" disabled={drinks.length === 0 || total <= 0 || isPending} type="submit">
-        Create Unpaid Order
+        <T id="createUnpaidOrder" />
       </button>
     </form>
   );

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { DrinkForm, type DrinkView } from "@/components/DrinkForm";
+import { T, useLanguage } from "@/components/LanguageProvider";
 import { formatMoney } from "@/lib/format";
 
 type DrinkTableProps = {
@@ -11,12 +12,13 @@ type DrinkTableProps = {
 
 export function DrinkTable({ drinks }: DrinkTableProps) {
   const router = useRouter();
+  const { language, text } = useLanguage();
   const [editingDrink, setEditingDrink] = useState<DrinkView | null>(null);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
 
   async function deleteDrink(drink: DrinkView) {
-    const confirmed = window.confirm(`Delete ${drink.name}?`);
+    const confirmed = window.confirm(`${text("deleteConfirm")} ${drink.name}?`);
 
     if (!confirmed) {
       return;
@@ -30,7 +32,7 @@ export function DrinkTable({ drinks }: DrinkTableProps) {
     const payload = await response.json();
 
     if (!response.ok) {
-      setError(payload.error ?? "Unable to delete drink.");
+      setError(payload.error ?? text("unableDeleteDrink"));
       return;
     }
 
@@ -44,7 +46,7 @@ export function DrinkTable({ drinks }: DrinkTableProps) {
   return (
     <section className="grid">
       <div className="panel">
-        <h2>{editingDrink ? "Edit Drink" : "Add Drink"}</h2>
+        <h2>{editingDrink ? <T id="editDrink" /> : <T id="addDrink" />}</h2>
         <DrinkForm
           key={editingDrink?.id ?? "new"}
           editingDrink={editingDrink}
@@ -53,19 +55,31 @@ export function DrinkTable({ drinks }: DrinkTableProps) {
       </div>
 
       <div className="panel">
-        <h2>Drink Catalog</h2>
+        <h2>
+          <T id="drinkCatalog" />
+        </h2>
         {error ? <div className="notice">{error}</div> : null}
         {drinks.length === 0 ? (
-          <p className="muted">No drinks yet. Add your first drink to start taking orders.</p>
+          <p className="muted">
+            <T id="noDrinks" />
+          </p>
         ) : (
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Drink</th>
-                  <th>Description</th>
-                  <th>Price</th>
-                  <th>Actions</th>
+                  <th>
+                    <T id="drink" />
+                  </th>
+                  <th>
+                    <T id="description" />
+                  </th>
+                  <th>
+                    <T id="price" />
+                  </th>
+                  <th>
+                    <T id="actions" />
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -78,7 +92,7 @@ export function DrinkTable({ drinks }: DrinkTableProps) {
                       </div>
                     </td>
                     <td>{drink.description}</td>
-                    <td className="price">{formatMoney(drink.price)}</td>
+                    <td className="price">{formatMoney(drink.price, language)}</td>
                     <td>
                       <div className="actions">
                         <button
@@ -87,7 +101,7 @@ export function DrinkTable({ drinks }: DrinkTableProps) {
                           type="button"
                           onClick={() => setEditingDrink(drink)}
                         >
-                          Edit
+                          <T id="edit" />
                         </button>
                         <button
                           className="button danger"
@@ -95,7 +109,7 @@ export function DrinkTable({ drinks }: DrinkTableProps) {
                           type="button"
                           onClick={() => deleteDrink(drink)}
                         >
-                          Delete
+                          <T id="delete" />
                         </button>
                       </div>
                     </td>

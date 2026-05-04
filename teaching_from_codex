@@ -1,0 +1,557 @@
+# Teaching From Codex
+
+This note explains what we set up, why each step mattered, and how we debugged
+the two main problems that happened during the WSL setup.
+
+## Session 1: Creating The Environment
+
+The project is a Next.js application that uses Prisma and PostgreSQL. That means
+the environment needs four main parts:
+
+- Node.js, to run the Next.js application.
+- pnpm, to run project scripts and manage JavaScript packages.
+- PostgreSQL, to store drinks and orders.
+- Prisma, to connect the application code to PostgreSQL.
+
+### 1. Use WSL For The Linux Environment
+
+You switched to WSL, which was the right move for this project. The README uses
+Ubuntu-style commands, PostgreSQL service commands, and `nvm`, so WSL gives us a
+Linux environment that matches the instructions better than Windows PowerShell.
+
+The project folder is still on Windows:
+
+```bash
+/mnt/c/Users/TA/Documents/Rest-aurant
+```
+
+That is normal in WSL. WSL can read and run code from `/mnt/c/...`.
+
+### 2. Install And Load nvm
+
+`nvm` means Node Version Manager. It lets you install and switch Node.js versions
+without using the system package manager.
+
+Why this matters:
+
+- Different JavaScript projects can require different Node versions.
+- `nvm` keeps Node inside your user account, not globally installed into Linux.
+- It avoids permission problems with global npm packages.
+
+We checked that `nvm` was installed in:
+
+```bash
+~/.nvm
+```
+
+Then we verified:
+
+```bash
+nvm --version
+node -v
+npm -v
+```
+
+The installed Node version was:
+
+```bash
+v24.15.0
+```
+
+### 3. Fix Shell Startup Loading
+
+At first, `node` worked in some shell contexts, but `nvm` did not load reliably
+in fresh login shell commands.
+
+The reason was this common `.bashrc` block:
+
+```bash
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+```
+
+That means `.bashrc` stops early for non-interactive shells. The `nvm` lines were
+below that early return, so some commands could not see `nvm`.
+
+To fix that, we also loaded `nvm` from `~/.profile`:
+
+```bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+```
+
+Why I did this:
+
+- `.profile` is read by login shells.
+- It makes `node`, `npm`, and `pnpm` available more reliably.
+- It prevents scripts from failing only because the shell did not load `nvm`.
+
+### 4. Enable pnpm With Corepack
+
+The project has this in `package.json`:
+
+```json
+"packageManager": "pnpm@10.10.0"
+```
+
+That tells us the project expects pnpm, not plain npm.
+
+Modern Node includes Corepack. Corepack can prepare the package manager version
+declared by the project.
+
+We prepared pnpm:
+
+```bash
+corepack prepare pnpm@10.10.0 --activate
+pnpm --version
+```
+
+Why this matters:
+
+- The repo expects pnpm commands like `pnpm dev`.
+- Using the package manager version from `package.json` reduces version mismatch.
+- It keeps the local setup close to the project config.
+
+### 5. Configure The App Environment File
+
+The first real runtime failure was caused by a missing `.env` file.
+
+The project had:
+
+```bash
+.env.example
+```
+
+with:
+
+```bash
+DATABASE_URL="postgresql://restaurant_user:restaurant_password@localhost:5432/restaurant_db?schema=public"
+```
+
+Prisma reads `DATABASE_URL` from the environment. Without it, Prisma does not
+know which database to connect to.
+
+We created:
+
+```bash
+.env
+```
+
+with the same database URL.
+
+Why this matters:
+
+- `.env.example` is documentation.
+- `.env` is the real local config file.
+- `.env` is ignored by Git because it may contain secrets.
+
+### 6. Create The PostgreSQL Database Account
+
+The application expected this database account:
+
+```text
+user: restaurant_user
+password: restaurant_password
+database: restaurant_db
+```
+
+PostgreSQL was installed and running, but that app user and database did not
+exist yet.
+
+We checked PostgreSQL roles and saw `restaurant_user` was missing. Then we
+created:
+
+```sql
+CREATE ROLE restaurant_user LOGIN PASSWORD 'restaurant_password';
+CREATE DATABASE restaurant_db OWNER restaurant_user;
+```
+
+Then Prisma needed one more permission for local development:
+
+```sql
+ALTER ROLE restaurant_user CREATEDB;
+```
+
+Why `CREATEDB` was needed:
+
+- `pnpm prisma migrate dev` creates a temporary "shadow database".
+- Prisma uses that shadow database to check migrations safely.
+- Without `CREATEDB`, Prisma cannot create the shadow database.
+
+After that, this worked:
+
+```bash
+pnpm prisma migrate dev
+```
+
+That applied the schema in `prisma/schema.prisma` to PostgreSQL.
+
+### 7. Start The Dev Server
+
+The dev command is:
+
+```bash
+pnpm dev
+```
+
+We later changed it to:
+
+```json
+"dev": "next dev --turbopack"
+```
+
+Why:
+
+- The app was seeing a Webpack dev runtime error.
+- Turbopack avoided that dev runtime path.
+- Next.js dev mode started cleanly with Turbopack.
+
+The app runs at:
+
+```text
+http://localhost:3000
+```
+
+## Bug 1: Missing DATABASE_URL And Database Setup
+
+### What You Saw
+
+The browser showed an application error or a server error.
+
+### What I Checked
+
+I reproduced the request with:
+
+```bash
+curl -i http://127.0.0.1:3000
+```
+
+Then I checked the Next.js dev server output. The real error was:
+
+```text
+Environment variable not found: DATABASE_URL
+```
+
+Prisma pointed directly to this line in `prisma/schema.prisma`:
+
+```prisma
+url = env("DATABASE_URL")
+```
+
+### How I Analyzed It
+
+That told us the bug was not in React, Next.js, or the page UI. The code reached
+Prisma, and Prisma failed before it could query the database.
+
+The missing part was local configuration:
+
+- `.env` did not exist.
+- `DATABASE_URL` was not loaded.
+- The expected PostgreSQL user/database were also not ready yet.
+
+### What I Did
+
+First, I created `.env` from `.env.example`.
+
+Then I checked PostgreSQL:
+
+```bash
+pg_isready -h localhost -p 5432
+```
+
+PostgreSQL was running, but the app account did not exist. So we created:
+
+```sql
+CREATE ROLE restaurant_user LOGIN PASSWORD 'restaurant_password';
+CREATE DATABASE restaurant_db OWNER restaurant_user;
+ALTER ROLE restaurant_user CREATEDB;
+```
+
+Then I ran:
+
+```bash
+pnpm prisma migrate dev
+```
+
+### Why This Fixed It
+
+After these steps:
+
+- Prisma could read `DATABASE_URL`.
+- PostgreSQL accepted the app credentials.
+- The database had the required tables.
+- The page could run queries like `prisma.drink.count()`.
+
+The homepage then returned:
+
+```text
+GET / 200
+```
+
+## Bug 2: Next.js Runtime / Internal Server Error From .next Cache
+
+This bug happened in two related forms.
+
+### Part A: Webpack Runtime Error
+
+You saw:
+
+```text
+__webpack_modules__[moduleId] is not a function
+```
+
+This is a client-side dev runtime error from Webpack. It usually means the
+browser loaded a bad or mismatched development chunk.
+
+### What I Checked
+
+I watched the Next.js dev server output and saw Fast Refresh warnings. The app
+could return HTML with `200 OK`, but the browser runtime still had a broken
+Webpack module state.
+
+### How I Analyzed It
+
+The project was running on Next.js dev mode with Webpack. Since the error was
+inside Webpack's module runtime, I tested whether the app worked with Turbopack:
+
+```bash
+pnpm exec next dev --turbopack
+```
+
+The routes worked:
+
+```text
+GET /       200
+GET /drinks 200
+GET /orders 200
+```
+
+### What I Did
+
+I changed the dev script in `package.json`:
+
+```json
+"dev": "next dev --turbopack"
+```
+
+### Why This Fixed It
+
+It avoided the Webpack development runtime that was throwing the module error.
+The app still builds normally for production with:
+
+```bash
+pnpm build
+```
+
+Only the development server changed.
+
+### Part B: Plain Internal Server Error
+
+Later, you saw only:
+
+```text
+Internal Server Error
+```
+
+### What I Checked
+
+Again, I reproduced it with:
+
+```bash
+curl -i http://127.0.0.1:3000
+```
+
+Then I read the dev server output. The important error was:
+
+```text
+ENOENT: no such file or directory, open '.next/server/app/page/app-build-manifest.json'
+```
+
+and similar missing files under:
+
+```text
+.next/static/development/
+```
+
+### How I Analyzed It
+
+`.next` is generated output. Next.js writes files there during both development
+and production builds.
+
+The likely cause was that `pnpm build` had been run while `pnpm dev` was still
+running. Both commands write into `.next`, so the dev cache became inconsistent.
+
+This was not a source-code bug. It was a generated-cache bug.
+
+### What I Did
+
+I stopped the dev server:
+
+```bash
+pkill -f 'next dev'
+```
+
+Then I removed only generated output:
+
+```bash
+rm -rf .next
+```
+
+Then I restarted:
+
+```bash
+pnpm dev
+```
+
+### Why This Fixed It
+
+Next.js rebuilt `.next` from scratch. The missing manifest files were recreated.
+
+The routes returned:
+
+```text
+GET /       200
+GET /drinks 200
+GET /orders 200
+```
+
+## Important Lesson: Do Not Run Build And Dev Together
+
+Avoid this:
+
+```bash
+pnpm dev
+pnpm build
+```
+
+at the same time in the same project folder.
+
+Why:
+
+- `pnpm dev` writes development files into `.next`.
+- `pnpm build` writes production files into `.next`.
+- Running both together can corrupt the generated cache.
+
+Safer workflow:
+
+```bash
+# Stop dev first
+pkill -f 'next dev'
+
+# Then build
+pnpm build
+
+# If needed, clean generated output before dev
+rm -rf .next
+pnpm dev
+```
+
+## Current Useful Commands
+
+Start the app:
+
+```bash
+pnpm dev
+```
+
+Apply database migrations:
+
+```bash
+pnpm prisma migrate dev
+```
+
+Check TypeScript:
+
+```bash
+pnpm typecheck
+```
+
+Build production output:
+
+```bash
+pnpm build
+```
+
+Clean Next.js generated output:
+
+```bash
+rm -rf .next
+```
+
+## Mental Model For Debugging
+
+When something fails, do not guess first. Follow the signal.
+
+### 1. Reproduce The Bug
+
+Use the browser and also use:
+
+```bash
+curl -i http://127.0.0.1:3000
+```
+
+The browser shows what the user sees. `curl` shows the HTTP status directly.
+
+### 2. Read The Server Log
+
+Next.js usually prints the real reason in the terminal where `pnpm dev` is
+running.
+
+Examples:
+
+```text
+Environment variable not found: DATABASE_URL
+```
+
+means configuration is missing.
+
+```text
+ENOENT ... .next/...
+```
+
+means generated build/dev output is missing or corrupted.
+
+### 3. Classify The Problem
+
+Ask what layer failed:
+
+- Shell or Node setup?
+- Package manager?
+- Database connection?
+- Prisma migration?
+- Next.js server?
+- Browser/client runtime?
+- Generated cache?
+
+### 4. Choose The Smallest Fix
+
+For the missing database config, the smallest fix was to create `.env` and the
+PostgreSQL account/database.
+
+For the corrupted `.next` cache, the smallest fix was to stop dev, delete
+generated output, and restart dev.
+
+For the Webpack runtime bug, the smallest fix was to use Turbopack for dev mode
+instead of upgrading the whole framework immediately.
+
+## Final State
+
+The app now has:
+
+- WSL Node.js through `nvm`.
+- pnpm through Corepack.
+- PostgreSQL database `restaurant_db`.
+- PostgreSQL user `restaurant_user`.
+- Prisma migrations applied.
+- Next.js dev mode using Turbopack.
+- English/Vietnamese UI toggle.
+- VND currency formatting with no decimal digits.
+
+Open the app at:
+
+```text
+http://localhost:3000
+```

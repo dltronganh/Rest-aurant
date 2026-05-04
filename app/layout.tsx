@@ -1,5 +1,6 @@
-import Link from "next/link";
 import type { Metadata } from "next";
+import { Header } from "@/components/Header";
+import { LanguageProvider } from "@/components/LanguageProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,18 +16,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="shell">
-          <header className="topbar">
-            <Link className="brand" href="/">
-              Rest-aurant
-            </Link>
-            <nav className="nav" aria-label="Main navigation">
-              <Link href="/drinks">Drinks</Link>
-              <Link href="/orders">Orders</Link>
-            </nav>
-          </header>
-          {children}
-        </div>
+        <LanguageProvider>
+          <div className="shell">
+            <Header />
+            {children}
+          </div>
+        </LanguageProvider>
       </body>
     </html>
   );

@@ -2,6 +2,7 @@
 
 import { FormEvent, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { T, useLanguage } from "@/components/LanguageProvider";
 
 export type DrinkView = {
   id: number;
@@ -18,6 +19,7 @@ type DrinkFormProps = {
 
 export function DrinkForm({ editingDrink, onCancelEdit }: DrinkFormProps) {
   const router = useRouter();
+  const { text } = useLanguage();
   const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -33,7 +35,7 @@ export function DrinkForm({ editingDrink, onCancelEdit }: DrinkFormProps) {
     const payload = await response.json();
 
     if (!response.ok) {
-      throw new Error(payload.error ?? "Image upload failed.");
+      throw new Error(payload.error ?? text("imageUploadFailed"));
     }
 
     return String(payload.imagePath);
@@ -70,54 +72,62 @@ export function DrinkForm({ editingDrink, onCancelEdit }: DrinkFormProps) {
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Unable to save drink.");
+        throw new Error(payload.error ?? text("unableSaveDrink"));
       }
 
       formRef.current?.reset();
       onCancelEdit();
       startTransition(() => router.refresh());
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Unable to save drink.");
+      setError(saveError instanceof Error ? saveError.message : text("unableSaveDrink"));
     }
   }
 
   return (
     <form ref={formRef} className="form" onSubmit={handleSubmit}>
       <div className="field">
-        <label htmlFor="name">Name</label>
+        <label htmlFor="name">
+          <T id="name" />
+        </label>
         <input
           id="name"
           name="name"
           required
           defaultValue={editingDrink?.name ?? ""}
-          placeholder="Iced coffee"
+          placeholder={text("name")}
         />
       </div>
       <div className="field">
-        <label htmlFor="description">Description</label>
+        <label htmlFor="description">
+          <T id="description" />
+        </label>
         <textarea
           id="description"
           name="description"
           required
           defaultValue={editingDrink?.description ?? ""}
-          placeholder="Short drink description"
+          placeholder={text("description")}
         />
       </div>
       <div className="field">
-        <label htmlFor="price">Price</label>
+        <label htmlFor="price">
+          <T id="price" />
+        </label>
         <input
           id="price"
           min="0"
           name="price"
           required
-          step="0.01"
+          step="1000"
           type="number"
           defaultValue={editingDrink?.price ?? ""}
-          placeholder="3.50"
+          placeholder="25000"
         />
       </div>
       <div className="field">
-        <label htmlFor="image">Image</label>
+        <label htmlFor="image">
+          <T id="image" />
+        </label>
         <input
           id="image"
           name="image"
@@ -125,16 +135,20 @@ export function DrinkForm({ editingDrink, onCancelEdit }: DrinkFormProps) {
           type="file"
           accept="image/*"
         />
-        {editingDrink ? <span className="muted">Leave empty to keep current image.</span> : null}
+        {editingDrink ? (
+          <span className="muted">
+            <T id="imageKeepCurrent" />
+          </span>
+        ) : null}
       </div>
       {error ? <div className="notice">{error}</div> : null}
       <div className="actions">
         <button className="button" disabled={isPending} type="submit">
-          {editingDrink ? "Save Drink" : "Add Drink"}
+          {editingDrink ? <T id="saveDrink" /> : <T id="addDrink" />}
         </button>
         {editingDrink ? (
           <button className="button secondary" type="button" onClick={onCancelEdit}>
-            Cancel
+            <T id="cancel" />
           </button>
         ) : null}
       </div>

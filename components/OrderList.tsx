@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { T, useLanguage } from "@/components/LanguageProvider";
 import { formatMoney } from "@/lib/format";
 
 export type OrderView = {
@@ -23,6 +24,7 @@ type OrderListProps = {
 
 export function OrderList({ orders }: OrderListProps) {
   const router = useRouter();
+  const { language, text } = useLanguage();
   const [isPending, startTransition] = useTransition();
 
   async function markPaid(orderId: number) {
@@ -36,7 +38,11 @@ export function OrderList({ orders }: OrderListProps) {
   }
 
   if (orders.length === 0) {
-    return <p className="muted">No orders yet.</p>;
+    return (
+      <p className="muted">
+        <T id="noOrders" />
+      </p>
+    );
   }
 
   return (
@@ -48,12 +54,14 @@ export function OrderList({ orders }: OrderListProps) {
               <strong>Order #{order.id}</strong>
               <div className="muted">
                 {order.paidAt
-                  ? `Paid ${new Date(order.paidAt).toLocaleString()}`
-                  : "Payment pending"}
+                  ? `${text("paidAt")} ${new Date(order.paidAt).toLocaleString(
+                      language === "vi" ? "vi-VN" : "en-US",
+                    )}`
+                  : text("paymentPending")}
               </div>
             </div>
             <span className={`status ${order.paidAt ? "paid" : "unpaid"}`}>
-              {order.paidAt ? "Paid" : "Unpaid"}
+              {order.paidAt ? <T id="paid" /> : <T id="unpaid" />}
             </span>
           </div>
 
@@ -62,15 +70,18 @@ export function OrderList({ orders }: OrderListProps) {
               <div className="item-row" key={item.id}>
                 <span>
                   {item.drinkNameSnapshot} x {item.quantity}
-                  <span className="muted"> at {formatMoney(item.unitPriceSnapshot)}</span>
+                  <span className="muted">
+                    {" "}
+                    <T id="at" /> {formatMoney(item.unitPriceSnapshot, language)}
+                  </span>
                 </span>
-                <strong className="price">{formatMoney(item.lineTotal)}</strong>
+                <strong className="price">{formatMoney(item.lineTotal, language)}</strong>
               </div>
             ))}
           </div>
 
           <div className="order-heading">
-            <span className="total">{formatMoney(order.totalPrice)}</span>
+            <span className="total">{formatMoney(order.totalPrice, language)}</span>
             {!order.paidAt ? (
               <button
                 className="button"
@@ -78,7 +89,7 @@ export function OrderList({ orders }: OrderListProps) {
                 type="button"
                 onClick={() => markPaid(order.id)}
               >
-                Mark Paid
+                <T id="markPaid" />
               </button>
             ) : null}
           </div>
