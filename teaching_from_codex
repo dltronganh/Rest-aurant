@@ -537,6 +537,606 @@ generated output, and restart dev.
 For the Webpack runtime bug, the smallest fix was to use Turbopack for dev mode
 instead of upgrading the whole framework immediately.
 
+## File And Code Change Log
+
+This section explains what files were added, edited, or removed during the setup
+and debugging work. It also explains the function of the important code files.
+
+### Initialization: Environment Startup Changes
+
+These changes were about making the machine able to run the project.
+
+#### Edited Outside The Project: `~/.profile`
+
+This file is in the WSL home folder, not inside the project.
+
+What changed:
+
+```bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+```
+
+Function of this code:
+
+- Sets the folder where `nvm` is installed.
+- Loads `nvm.sh`, which gives the shell access to `nvm`, `node`, and `npm`.
+- Loads tab completion for `nvm`.
+
+Why it was needed:
+
+- `.bashrc` skipped the `nvm` loading block in some non-interactive shell cases.
+- `.profile` made Node available more consistently when opening WSL or running
+  shell commands.
+
+#### Added Inside The Project: `.env`
+
+What was added:
+
+```bash
+DATABASE_URL="postgresql://restaurant_user:restaurant_password@localhost:5432/restaurant_db?schema=public"
+```
+
+Function of this file:
+
+- Stores local environment variables.
+- Gives Prisma the PostgreSQL connection string.
+
+Why it was needed:
+
+- `prisma/schema.prisma` uses `env("DATABASE_URL")`.
+- Without `.env`, Prisma could not connect to the database.
+
+Important:
+
+- `.env` should stay local.
+- It should not be committed if it contains secrets.
+
+#### Existing Reference File: `.env.example`
+
+Function of this file:
+
+- Shows future developers what environment variables are required.
+- It is safe to commit because it contains example local credentials, not private
+  production credentials.
+
+#### Database Changes: PostgreSQL Role And Database
+
+These were not code files, but they were required environment changes.
+
+What was created:
+
+```sql
+CREATE ROLE restaurant_user LOGIN PASSWORD 'restaurant_password';
+CREATE DATABASE restaurant_db OWNER restaurant_user;
+ALTER ROLE restaurant_user CREATEDB;
+```
+
+Function:
+
+- `restaurant_user` is the account the app uses to connect to PostgreSQL.
+- `restaurant_db` is the database where drinks and orders are stored.
+- `CREATEDB` lets Prisma create its temporary shadow database during
+  `prisma migrate dev`.
+
+### Bug 1 Changes: Missing `DATABASE_URL`
+
+Bug 1 was not fixed by changing React code. It was fixed by connecting the app to
+its required database environment.
+
+Files added or edited:
+
+- Added `.env`.
+- Used existing `.env.example` as the template.
+- Used existing `prisma/schema.prisma` to understand what database provider and
+  environment variable were required.
+
+Code/function involved:
+
+```prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+```
+
+Function of this code:
+
+- Tells Prisma that the app uses PostgreSQL.
+- Tells Prisma to read the database URL from the environment instead of
+  hardcoding it.
+
+Action taken:
+
+```bash
+pnpm prisma migrate dev
+```
+
+Function of this command:
+
+- Reads `prisma/schema.prisma`.
+- Applies the migration files in `prisma/migrations`.
+- Generates Prisma Client into `node_modules/@prisma/client`.
+
+### Bug 2 Changes: Webpack Runtime Error And Corrupted `.next`
+
+Bug 2 had two parts:
+
+- A browser runtime error from Webpack dev chunks.
+- A plain `Internal Server Error` caused by missing generated files in `.next`.
+
+#### Edited: `package.json`
+
+What changed:
+
+```json
+"dev": "next dev --turbopack"
+```
+
+Function of this code:
+
+- Defines what happens when you run `pnpm dev`.
+- Starts Next.js in development mode.
+- Uses Turbopack instead of Webpack for the dev bundler.
+
+Why it was changed:
+
+- The browser error came from Webpack's module runtime:
+
+```text
+__webpack_modules__[moduleId] is not a function
+```
+
+- Turbopack avoided that broken Webpack dev-runtime path.
+
+#### Removed: `.next`
+
+What was removed:
+
+```bash
+rm -rf .next
+```
+
+Function of `.next`:
+
+- It is generated output from Next.js.
+- `pnpm dev` writes development output there.
+- `pnpm build` writes production output there.
+
+Why it was removed:
+
+- The server log showed missing generated files:
+
+```text
+ENOENT ... .next/server/app/page/app-build-manifest.json
+```
+
+- That meant the cache/output folder was corrupted.
+- Removing `.next` forced Next.js to rebuild the generated files cleanly.
+
+Important:
+
+- `.next` is not source code.
+- It is safe to remove when debugging Next.js build/dev cache problems.
+- Do not run `pnpm build` while `pnpm dev` is running because both write into
+  `.next`.
+
+#### Removed: `tsconfig.tsbuildinfo`
+
+Function of this file:
+
+- TypeScript can create it as incremental build metadata.
+- It is generated output, not source code.
+
+Why it was removed:
+
+- It appeared after running type checks/builds.
+- It did not need to be kept as part of the project changes.
+
+### Feature Changes: English/Vietnamese Toggle And VND
+
+After the environment and bugs were fixed, we added the language and currency
+feature.
+
+#### Added: `lib/i18n.ts`
+
+Function of this file:
+
+- Defines supported languages:
+
+```ts
+export const languages = ["en", "vi"] as const;
+```
+
+- Defines the `Language` TypeScript type.
+- Stores all English and Vietnamese UI text in one translation object.
+- Defines `TranslationKey`, so components can only ask for valid translation
+  keys.
+
+Why this is useful:
+
+- Text is centralized.
+- Adding or changing translations is easier.
+- TypeScript helps catch invalid translation keys.
+
+#### Added: `components/LanguageProvider.tsx`
+
+Function of this file:
+
+- Creates a React context for the selected language.
+- Stores the current language in component state.
+- Saves the language choice to `localStorage`.
+- Updates `document.documentElement.lang`.
+- Exposes:
+
+```ts
+useLanguage()
+T
+```
+
+What `useLanguage()` does:
+
+- Lets client components read the current language.
+- Lets client components switch language.
+- Gives components a `text(key)` function.
+
+What `<T id="..." />` does:
+
+- Renders translated text for one translation key.
+- Example:
+
+```tsx
+<T id="ordersTitle" />
+```
+
+renders `Orders` in English or `Đơn hàng` in Vietnamese.
+
+#### Added: `components/LanguageToggle.tsx`
+
+Function of this file:
+
+- Renders the button in the header.
+- Calls `toggleLanguage()` when clicked.
+- Shows `Tiếng Việt` when the app is in English.
+- Shows `English` when the app is in Vietnamese.
+
+Why it is a client component:
+
+- It needs click handling.
+- It reads and updates React state.
+- It uses `localStorage` indirectly through `LanguageProvider`.
+
+#### Added: `components/Header.tsx`
+
+Function of this file:
+
+- Renders the top navigation bar.
+- Shows the brand link.
+- Shows navigation links for drinks and orders.
+- Shows the language toggle button.
+
+Why it was added:
+
+- The original header was inside `app/layout.tsx`.
+- The language toggle needs client-side behavior.
+- Moving the header into a client component let the nav labels update when the
+  language changes.
+
+#### Added: `components/Money.tsx`
+
+Function of this file:
+
+- Reads the current language from `useLanguage()`.
+- Calls `formatMoney(value, language)`.
+- Renders money in VND with no decimals.
+
+Why it was added:
+
+- Server pages cannot directly read `localStorage`.
+- A client money component lets visible money update when the language changes.
+
+#### Edited: `lib/format.ts`
+
+What changed:
+
+```ts
+export function formatMoney(value: number | string, language: Language = "en") {
+  const amount = typeof value === "string" ? Number(value) : value;
+
+  return new Intl.NumberFormat(language === "vi" ? "vi-VN" : "en-US", {
+    style: "currency",
+    currency: "VND",
+    currencyDisplay: "code",
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(amount);
+}
+```
+
+Function of this code:
+
+- Converts a number or numeric string into a currency string.
+- Uses VND instead of USD.
+- Removes decimal digits.
+- Uses English or Vietnamese number formatting depending on the selected
+  language.
+
+Examples:
+
+```text
+English:    VND 25,000
+Vietnamese: 25.000 VND
+```
+
+#### Edited: `app/layout.tsx`
+
+Function of this file:
+
+- Defines the root HTML layout for every page.
+- Loads global CSS.
+- Wraps the app in `LanguageProvider`.
+- Renders the shared `Header`.
+
+Why it was edited:
+
+- Every page needs access to the selected language.
+- The header should appear on every page.
+
+#### Edited: `app/page.tsx`
+
+Function of this file:
+
+- Renders the dashboard homepage.
+- Queries Prisma for:
+
+```ts
+drinkCount
+unpaidCount
+recentTotal
+```
+
+- Shows quick stats.
+
+What changed:
+
+- Static English text was replaced with `<T id="..." />`.
+- Recent order value was changed to use `<Money value={recentTotal} />`.
+
+#### Edited: `app/drinks/page.tsx`
+
+Function of this file:
+
+- Queries drinks from the database.
+- Converts Prisma decimal values to JavaScript numbers.
+- Renders the drink management page.
+
+What changed:
+
+- Page title and description now use translation keys.
+
+#### Edited: `app/orders/page.tsx`
+
+Function of this file:
+
+- Queries drinks and orders from the database.
+- Converts Prisma decimal values and dates into client-friendly values.
+- Renders the order form and order history.
+
+What changed:
+
+- Page title, description, panel headings, and order history heading now use
+  translation keys.
+
+#### Edited: `components/DrinkForm.tsx`
+
+Function of this file:
+
+- Client-side form for adding or editing a drink.
+- Uploads an image to `/api/uploads`.
+- Sends drink data to `/api/drinks` or `/api/drinks/[id]`.
+- Refreshes the page after saving.
+
+What changed:
+
+- Labels, buttons, helper text, placeholders, and fallback errors use
+  translations.
+- Price input changed to whole VND-style input:
+
+```tsx
+step="1000"
+placeholder="25000"
+```
+
+Why:
+
+- VND prices normally do not need cents/decimal digits.
+
+#### Edited: `components/DrinkTable.tsx`
+
+Function of this file:
+
+- Shows all drinks in a table.
+- Lets the user choose a drink to edit.
+- Lets the user delete a drink.
+- Renders `DrinkForm`.
+
+What changed:
+
+- Table headers, empty state, buttons, delete confirmation, and fallback errors
+  use translations.
+- Price display uses:
+
+```ts
+formatMoney(drink.price, language)
+```
+
+#### Edited: `components/OrderForm.tsx`
+
+Function of this file:
+
+- Client-side form for creating an unpaid order.
+- Tracks item quantities in React state.
+- Calculates the order total before submitting.
+- Sends selected items to `/api/orders`.
+
+What changed:
+
+- Empty state, quantity label, total label, submit button, and fallback errors
+  use translations.
+- Drink prices and totals use VND formatting with no decimals.
+
+#### Edited: `components/OrderList.tsx`
+
+Function of this file:
+
+- Shows existing orders.
+- Displays paid/unpaid state.
+- Displays item snapshots and totals.
+- Lets the user mark an unpaid order as paid.
+
+What changed:
+
+- Empty state, paid/unpaid labels, payment text, `at`, and `Mark Paid` button use
+  translations.
+- Dates use `en-US` or `vi-VN` formatting based on the current language.
+- Money uses VND formatting with no decimals.
+
+#### Edited: `app/globals.css`
+
+Function of this file:
+
+- Defines global styles for the app.
+- Styles layout, navigation, forms, tables, panels, buttons, order cards, and
+  responsive behavior.
+
+What changed:
+
+- Added `.topbar-controls` to group nav links and the language button.
+- Added `.language-toggle` styling.
+
+Why:
+
+- The language button needed to sit cleanly beside the navigation links.
+- The header needed to stay responsive on smaller screens.
+
+### API And Database Code Function
+
+These files were not heavily changed for the language toggle, but they are
+important to understand how the app works.
+
+#### `lib/db.ts`
+
+Function:
+
+- Creates a Prisma Client.
+- Reuses the same Prisma Client in development through `globalThis`.
+
+Why:
+
+- Next.js dev mode reloads modules often.
+- Reusing Prisma Client helps avoid creating too many database connections.
+
+#### `prisma/schema.prisma`
+
+Function:
+
+- Defines the database models:
+
+```text
+Drink
+Order
+OrderItem
+```
+
+- Defines relationships between orders and order items.
+- Defines PostgreSQL as the database provider.
+
+#### `prisma/migrations/.../migration.sql`
+
+Function:
+
+- SQL generated by Prisma.
+- Creates the actual PostgreSQL tables and constraints.
+
+#### `app/api/drinks/route.ts`
+
+Function:
+
+- `GET`: returns all drinks.
+- `POST`: validates and creates a drink.
+
+#### `app/api/drinks/[id]/route.ts`
+
+Function:
+
+- `PUT`: validates and updates one drink.
+- `DELETE`: deletes one drink.
+
+#### `app/api/orders/route.ts`
+
+Function:
+
+- `GET`: returns orders with their items.
+- `POST`: validates requested drink quantities, snapshots drink names/prices, and
+  creates an unpaid order.
+
+#### `app/api/orders/[id]/pay/route.ts`
+
+Function:
+
+- Marks an order as paid by setting `paidAt`.
+
+#### `app/api/uploads/route.ts`
+
+Function:
+
+- Accepts an uploaded image file.
+- Saves it under `public/uploads`.
+- Returns the image path for storing in the drink record.
+
+### Summary Of Source Files Added
+
+These source files were added:
+
+```text
+components/Header.tsx
+components/LanguageProvider.tsx
+components/LanguageToggle.tsx
+components/Money.tsx
+lib/i18n.ts
+teaching_from_codex
+```
+
+### Summary Of Source Files Edited
+
+These source files were edited:
+
+```text
+app/drinks/page.tsx
+app/globals.css
+app/layout.tsx
+app/orders/page.tsx
+app/page.tsx
+components/DrinkForm.tsx
+components/DrinkTable.tsx
+components/OrderForm.tsx
+components/OrderList.tsx
+lib/format.ts
+package.json
+```
+
+### Summary Of Generated Files Removed
+
+These generated files/folders were removed during debugging:
+
+```text
+.next
+tsconfig.tsbuildinfo
+```
+
+They were removed because they are generated output, not source code.
+
 ## Final State
 
 The app now has:
